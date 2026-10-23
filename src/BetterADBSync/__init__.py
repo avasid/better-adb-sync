@@ -28,6 +28,7 @@ class FileSyncer():
         path_join_function_source,
         path_join_function_destination,
         folder_file_overwrite_error: bool = True,
+        filter_filename_destination = None,
         ) -> Tuple[
             Union[dict, Tuple[int, int], None], # delete
             Union[dict, Tuple[int, int], None], # copy
@@ -35,6 +36,9 @@ class FileSyncer():
             Union[dict, Tuple[int, int], None], # unaccounted_destination
             Union[dict, Tuple[int, int], None]  # excluded_destination
         ]:
+
+        if filter_filename_destination is None:
+            filter_filename_destination = lambda x: x
 
         exclude = False
         for destination_exclude_pattern in destination_exclude_patterns:
@@ -75,7 +79,7 @@ class FileSyncer():
                     excluded_source = None
                     unaccounted_destination = {".": destination["."]}
                     excluded_destination = {".": None}
-                    destination.pop(".")
+                    destination.pop(".", None)
                     for key, value in destination.items():
                         delete[key], _, _, unaccounted_destination[key], excluded_destination[key] = cls.diff_trees(
                             None,
@@ -85,7 +89,8 @@ class FileSyncer():
                             destination_exclude_patterns,
                             path_join_function_source,
                             path_join_function_destination,
-                            folder_file_overwrite_error = folder_file_overwrite_error
+                            folder_file_overwrite_error = folder_file_overwrite_error,
+                            filter_filename_destination = filter_filename_destination
                         )
             else:
                 raise NotImplementedError
@@ -159,17 +164,25 @@ class FileSyncer():
                     excluded_source = {".": None}
                     unaccounted_destination = None
                     excluded_destination = None
-                    source.pop(".")
+                    source.pop(".", None)
+                    seen_dest_keys = {}
                     for key, value in source.items():
+                        dest_key = filter_filename_destination(key)
+                        if dest_key in seen_dest_keys:
+                            logging.warning(f"Filename collision: '{key}' and '{seen_dest_keys[dest_key]}' both map to destination filename '{dest_key}'")
+                        else:
+                            seen_dest_keys[dest_key] = key
+
                         _, copy[key], excluded_source[key], _, _ = cls.diff_trees(
                             value,
                             None,
                             path_join_function_source(path_source, key),
-                            path_join_function_destination(path_destination, key),
+                            path_join_function_destination(path_destination, dest_key),
                             destination_exclude_patterns,
                             path_join_function_source,
                             path_join_function_destination,
-                            folder_file_overwrite_error = folder_file_overwrite_error
+                            folder_file_overwrite_error = folder_file_overwrite_error,
+                            filter_filename_destination = filter_filename_destination
                         )
             elif isinstance(destination, tuple):
                 if exclude:
@@ -184,17 +197,25 @@ class FileSyncer():
                     excluded_source = {".": None}
                     unaccounted_destination = None
                     excluded_destination = None
-                    source.pop(".")
+                    source.pop(".", None)
+                    seen_dest_keys = {}
                     for key, value in source.items():
+                        dest_key = filter_filename_destination(key)
+                        if dest_key in seen_dest_keys:
+                            logging.warning(f"Filename collision: '{key}' and '{seen_dest_keys[dest_key]}' both map to destination filename '{dest_key}'")
+                        else:
+                            seen_dest_keys[dest_key] = key
+
                         _, copy[key], excluded_source[key], _, _ = cls.diff_trees(
                             value,
                             None,
                             path_join_function_source(path_source, key),
-                            path_join_function_destination(path_destination, key),
+                            path_join_function_destination(path_destination, dest_key),
                             destination_exclude_patterns,
                             path_join_function_source,
                             path_join_function_destination,
-                            folder_file_overwrite_error = folder_file_overwrite_error
+                            folder_file_overwrite_error = folder_file_overwrite_error,
+                            filter_filename_destination = filter_filename_destination
                         )
                     if folder_file_overwrite_error:
                         logging.critical(f"Refusing to overwrite file {path_destination} with directory {path_source}")
@@ -215,19 +236,33 @@ class FileSyncer():
                     excluded_source = {".": None}
                     unaccounted_destination = {".": None}
                     excluded_destination = {".": None}
-                    source.pop(".")
+                    source.pop(".", None)
+                    seen_dest_keys = {}
                     for key, value in source.items():
-                        delete[key], copy[key], excluded_source[key], unaccounted_destination[key], excluded_destination[key] = cls.diff_trees(
+                        dest_key = filter_filename_destination(key)
+                        if dest_key in seen_dest_keys:
+                            logging.warning(f"Filename collision: '{key}' and '{seen_dest_keys[dest_key]}' both map to destination filename '{dest_key}'")
+                        else:
+                            seen_dest_keys[dest_key] = key
+
+                        del_child, copy_child, excl_src, unacc_dest, excl_dest = cls.diff_trees(
                             value,
-                            destination.pop(key, None),
+                            destination.pop(dest_key, None),
                             path_join_function_source(path_source, key),
-                            path_join_function_destination(path_destination, key),
+                            path_join_function_destination(path_destination, dest_key),
                             destination_exclude_patterns,
                             path_join_function_source,
                             path_join_function_destination,
-                            folder_file_overwrite_error = folder_file_overwrite_error
+                            folder_file_overwrite_error = folder_file_overwrite_error,
+                            filter_filename_destination = filter_filename_destination
                         )
-                    destination.pop(".")
+                        delete[dest_key] = del_child
+                        copy[key] = copy_child
+                        excluded_source[key] = excl_src
+                        unaccounted_destination[dest_key] = unacc_dest
+                        excluded_destination[dest_key] = excl_dest
+
+                    destination.pop(".", None)
                     for key, value in destination.items():
                         delete[key], _, _, unaccounted_destination[key], excluded_destination[key] = cls.diff_trees(
                             None,
@@ -237,7 +272,8 @@ class FileSyncer():
                             destination_exclude_patterns,
                             path_join_function_source,
                             path_join_function_destination,
-                            folder_file_overwrite_error = folder_file_overwrite_error
+                            folder_file_overwrite_error = folder_file_overwrite_error,
+                            filter_filename_destination = filter_filename_destination
                         )
             else:
                 raise NotImplementedError
@@ -299,17 +335,20 @@ class FileSyncer():
         """Modify sync paths according to how a trailing slash on the source path should be treated"""
         # TODO I'm not exactly sure if this covers source and destination being symlinks (lstat vs stat etc)
         # we only need to consider when the destination is a directory
+        destination_is_dir = False
         try:
             lstat_destination = fs_destination.lstat(path_destination)
+            if stat.S_ISLNK(lstat_destination.st_mode):
+                logging_fatal("Destination is a symlink. Not sure what to do. See GitHub issue #8")
+            if stat.S_ISDIR(lstat_destination.st_mode):
+                destination_is_dir = True
         except FileNotFoundError:
-            return path_source, path_destination
+            if path_destination.endswith("/") or path_destination.endswith("\\"):
+                destination_is_dir = True
         except (NotADirectoryError, PermissionError) as e:
             perror(path_source, e, FATAL)
 
-        if stat.S_ISLNK(lstat_destination.st_mode):
-            logging_fatal("Destination is a symlink. Not sure what to do. See GitHub issue #8")
-
-        if not stat.S_ISDIR(lstat_destination.st_mode):
+        if not destination_is_dir:
             return path_source, path_destination
 
         # we know the destination is a directory at this point
@@ -323,7 +362,7 @@ class FileSyncer():
         if stat.S_ISREG(lstat_source.st_mode) or (stat.S_ISDIR(lstat_source.st_mode) and path_source[-1] not in ["/", "\\"]):
             path_destination = fs_destination.join(
                 path_destination,
-                fs_destination.split(path_source)[1]
+                fs_destination.filter_filename(fs_destination.split(path_source)[1])
             )
         return path_source, path_destination
 
@@ -412,7 +451,8 @@ def main():
         excludePatterns,
         fs_source.join,
         fs_destination.join,
-        folder_file_overwrite_error = not args.dry_run and not args.force
+        folder_file_overwrite_error = not args.dry_run and not args.force,
+        filter_filename_destination = fs_destination.filter_filename
     )
 
     tree_delete                  = FileSyncer.prune_tree(tree_delete)

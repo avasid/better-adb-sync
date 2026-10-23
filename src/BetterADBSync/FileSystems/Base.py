@@ -7,8 +7,18 @@ import stat
 from ..SAOLogging import perror
 
 class FileSystem():
+    RESTRICTED_CHARACTERS = {'\0', '/'}
+
     def __init__(self, adb_arguments: List[str]) -> None:
         self.adb_arguments = adb_arguments
+
+    def filter_filename(self, filename: str) -> str:
+        if filename in [".", ".."]:
+            return filename
+        filtered = "".join(c for c in filename if c not in self.RESTRICTED_CHARACTERS)
+        if not filtered and filename:
+            filtered = "_"
+        return filtered
 
     def _get_files_tree(self, tree_path: str, tree_path_stat: os.stat_result, follow_links: bool = False):
         # the reason to have two functions instead of one purely recursive one is to use self.lstat_in_dir ie ls
@@ -88,11 +98,12 @@ class FileSystem():
             except KeyError:
                 pass
             for key, value in tree.items():
+                dest_key = self.filter_filename(key)
                 self.push_tree_here(
                     fs_source.normpath(fs_source.join(tree_path, key)),
                     fs_source.join(relative_tree_path, key),
                     value,
-                    self.normpath(self.join(destination_root, key)),
+                    self.normpath(self.join(destination_root, dest_key)),
                     fs_source,
                     dry_run = dry_run,
                     show_progress = show_progress

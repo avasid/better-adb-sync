@@ -12,6 +12,8 @@ from ..SAOLogging import logging_fatal
 from .Base import FileSystem
 
 class AndroidFileSystem(FileSystem):
+    RESTRICTED_CHARACTERS = {'\0', '/'}
+
     RE_TESTCONNECTION_NO_DEVICE = re.compile("^adb\\: no devices/emulators found$")
     RE_TESTCONNECTION_DAEMON_NOT_RUNNING = re.compile("^\\* daemon not running; starting now at tcp:\\d+$")
     RE_TESTCONNECTION_DAEMON_STARTED = re.compile("^\\* daemon started successfully$")

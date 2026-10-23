@@ -7,6 +7,11 @@ from ..SAOLogging import logging_fatal
 from .Base import FileSystem
 
 class LocalFileSystem(FileSystem):
+    if os.name == "nt":
+        RESTRICTED_CHARACTERS = set('<>:"/\\|?*') | {chr(c) for c in range(32)}
+    else:
+        RESTRICTED_CHARACTERS = {'\0', '/'}
+
     @property
     def sep(self) -> str:
         return os.path.sep
